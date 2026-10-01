@@ -1,5 +1,5 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.4",
   "files": {
     "auto_update.py": "b7b026cea42569b1f1e8eca2590d1838571b01ada3034c371215e724fae61b32",
     "run_raspi_agent.sh": "9ec9c0a60f6ef1b93ace2323aa1680fda70044fa0518bd2e158698344a7bfafa",
@@ -16,6 +16,6 @@
     "wifi_portal.py": "cb31dde1fae1ba254f8a2e3648cf63663c714582fb15e9b5253950c4b2ee8dca",
     "templates/wifi_setup.html": "e24882c90142c2af4acd8e040d6998bdfda39f85000ba01a96ed80ca04f37485",
     "0001.mp3": "2088fe128ca219003d2375d9405df31eb57ee75b39df15771f046f25e7a409d9",
-    "VERSION": "f5e5c9534532840fcd45bb002e69ed85c61dba2753450e26b448b7df1481e24d"
+    "VERSION": "d1b77b88f4b9f675a900e4143ac768a21218623cfe1703ca43162388c3271bd6"
   }
 }
