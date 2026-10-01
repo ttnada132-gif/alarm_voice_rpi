@@ -184,7 +184,8 @@ Wi-Fi 연결이 60초 이상 끊기면 저장된 목록을 재시도하고, 모�
 
 `VERSION`에 설치 버전을, `release.json`에 버전 및 실행 파일별 SHA-256을 기록합니다.
 시작 스크립트는 기존 Wi-Fi/방송 서버 연결 확인이 끝난 뒤
-`ttnada132-gif/alarm_voice_rpi`의 `main` 최신 커밋을 확인합니다.
+`ttnada132-gif/alarm_voice_rpi`의 `main` 최신 커밋을 `git ls-remote`로 확인합니다.
+GitHub REST API를 사용하지 않으므로 비인증 API 호출 제한(403)을 피합니다.
 설치 버전보다 높은 `MAJOR.MINOR.PATCH` 버전일 때만 해당 커밋의 코드를 내려받습니다.
 파일 목록·해시·Python/Bash 구문을 검증한 뒤 `/home/pi/shinwhatech`에 적용하고
 시작 스크립트를 새 코드로 다시 실행합니다. Wi-Fi 설정 서비스도 재시작합니다.
@@ -196,7 +197,7 @@ Wi-Fi 연결이 60초 이상 끊기면 저장된 목록을 재시도하고, 모�
 - 직전 파일 백업은 `.update-backup/`에 보관하며, 진행 중인 복구 정보는 `.update-transaction/`에 보관합니다.
 - 업데이트 결과와 버전은 `log.txt`의 `[업데이트]` 항목에서 확인할 수 있습니다.
 - 실행 코드와 템플릿, 알람 음원만 업데이트합니다. Python 패키지 설치와 systemd 유닛 변경은 자동화하지 않습니다. 이 릴리스는 추가 패키지가 필요 없습니다.
-- 실행 폴더에는 Git 저장소나 GitHub 인증정보가 필요하지 않습니다. 공개 저장소의 HTTPS 주소를 이용합니다.
+- `git` 실행 파일이 필요합니다 (`sudo apt-get install git`). 실행 폴더에는 Git 저장소나 GitHub 인증정보가 필요하지 않습니다. 공개 저장소의 HTTPS 주소를 이용합니다.
 
 새 버전을 배포할 때는 코드를 수정한 후 **마지막으로** 아래 명령을 실행하고,
 생성된 `VERSION`, `release.json`도 함께 `main`에 push합니다.

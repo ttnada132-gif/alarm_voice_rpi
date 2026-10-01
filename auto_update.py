@@ -1,4 +1,4 @@
-"""Boot-time updates from a pinned GitHub commit; no third-party dependencies."""
+"""Boot-time updates from a pinned GitHub commit; requires the git executable."""
 import argparse
 import fcntl
 import hashlib
@@ -157,9 +157,19 @@ def check_update(root):
     local = (root / 'VERSION').read_text().strip() if (root / 'VERSION').exists() else '0.0.0'
     version(local)
     log(root, f'현재 버전 {local}; GitHub {REPOSITORY}/{BRANCH} 확인')
-    commit = json.loads(download(f'https://api.github.com/repos/{REPOSITORY}/commits/{BRANCH}', 1024 * 1024))['sha']
-    if not re.fullmatch(r'[0-9a-f]{40}', commit):
+    # Git's ref lookup avoids the unauthenticated GitHub REST API rate limit.
+    # Pin every download to this commit even if main changes during the update.
+    ref = f'refs/heads/{BRANCH}'
+    result = subprocess.run(
+        ['git', 'ls-remote', '--exit-code', '--refs',
+         f'https://github.com/{REPOSITORY}.git', ref],
+        check=True, capture_output=True, text=True, timeout=15,
+        env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'},
+    )
+    fields = result.stdout.strip().split()
+    if len(fields) != 2 or fields[1] != ref or not re.fullmatch(r'[0-9a-f]{40}', fields[0]):
         raise ValueError('잘못된 GitHub 커밋')
+    commit = fields[0]
     base = f'https://raw.githubusercontent.com/{REPOSITORY}/{commit}'
     remote = download(base + '/VERSION', 100).decode().strip()
     if version(remote) <= version(local):

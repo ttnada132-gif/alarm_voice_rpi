@@ -1,7 +1,7 @@
 {
   "version": "1.0.2",
   "files": {
-    "auto_update.py": "2ca8ff610e272eb996ae3a7d9683a986e94507f8137685171eda490596403a96",
+    "auto_update.py": "8b20172ccb4bca9f0801776b5a6a26b1cd5baa532fe95be0b9f079342a54e767",
     "run_raspi_agent.sh": "9ec9c0a60f6ef1b93ace2323aa1680fda70044fa0518bd2e158698344a7bfafa",
     "auto_start.sh": "5f4f4f43b7328648e01b5904e62800acf5c9f305cbfc5dc9e9cd1c18d9bd8ae4",
     "show_logs.sh": "e8bfdba33527888fb3b67c8a8e4800f3c5ad7d4307202f405c0d8b174e0f15a9",

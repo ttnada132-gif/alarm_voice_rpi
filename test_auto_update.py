@@ -23,6 +23,13 @@ class UpdateTests(unittest.TestCase):
         (self.root / 'wifi_networks.csv').write_text('private wifi')
         (self.root / 'last_location.json').write_text('saved GPS')
         (self.root / 'raspi_agent.py').write_text('old code')
+        real_run = subprocess.run
+        def run_command(args, **kwargs):
+            if args[:2] == ['git', 'ls-remote']:
+                return subprocess.CompletedProcess(args, 0, 'a'*40 + '\trefs/heads/main\n', '')
+            return real_run(args, **kwargs)
+        self.git = patch.object(updater.subprocess, 'run', side_effect=run_command).start()
+        self.addCleanup(patch.stopall)
 
     def release(self):
         payload = {name: b'# release file\n' for name in updater.FILES}
@@ -44,14 +51,15 @@ class UpdateTests(unittest.TestCase):
 
     def test_same_or_older_version_never_downloads_archive(self):
         for remote in (b'1.0.0', b'0.9.9'):
-            with patch.object(updater, 'download', side_effect=[b'{"sha":"' + b'a'*40 + b'"}', remote]) as get:
+            with patch.object(updater, 'download', side_effect=[remote]) as get:
                 self.assertFalse(updater.check_update(self.root))
-                self.assertEqual(get.call_count, 2)
+                self.assertEqual(get.call_count, 1)
+                self.assertNotIn('api.github.com', get.call_args.args[0])
 
     def test_new_version_installs_and_preserves_data(self):
         manifest, archive = self.release()
         with patch.object(updater, 'download', side_effect=[
-            b'{"sha":"' + b'a'*40 + b'"}', b'1.0.1', json.dumps(manifest).encode(), archive
+            b'1.0.1', json.dumps(manifest).encode(), archive
         ]) as get:
             self.assertTrue(updater.check_update(self.root))
             self.assertIn('a'*40, get.call_args.args[0])
@@ -62,6 +70,23 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual((self.root / '.update-backup/raspi_agent.py').read_text(), 'old code')
         self.assertTrue((self.root / 'run_raspi_agent.sh').stat().st_mode & 0o111)
         self.assertFalse((self.root / '.update-transaction').exists())
+
+    def test_invalid_git_ref_rejected_before_download(self):
+        for output in ('', 'bad\trefs/heads/main', 'a'*40 + '\trefs/heads/other'):
+            self.git.side_effect = None
+            self.git.return_value = subprocess.CompletedProcess([], 0, output, '')
+            with patch.object(updater, 'download') as get:
+                with self.assertRaisesRegex(ValueError, '커밋'):
+                    updater.check_update(self.root)
+                get.assert_not_called()
+
+    def test_git_timeout_leaves_code_unchanged(self):
+        self.git.side_effect = subprocess.TimeoutExpired('git', 15)
+        with patch.object(updater, 'download') as get:
+            with patch('sys.argv', ['auto_update.py', '--root', str(self.root)]):
+                self.assertEqual(updater.main(), 0)
+            get.assert_not_called()
+        self.assertEqual((self.root / 'raspi_agent.py').read_text(), 'old code')
 
     def test_bad_hash_and_extra_path_rejected(self):
         manifest, archive = self.release()
