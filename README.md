@@ -180,7 +180,7 @@ Wi-Fi 연결이 60초 이상 끊기면 저장된 목록을 재시도하고, 모�
 
 접점은 기본 450ms 동안 안정된 상태만 처리합니다. 시작 시에는 HIGH/LOW 어느 상태에서도 발신하지 않습니다. LOW(내려놓음)가 확인된 뒤 HIGH(들림)로 바뀔 때만 발신합니다. 서버에서 통화를 종료해도 수화기를 내려놓았다가 다시 들면 새로 발신합니다. 내려놓으면 로컬 수화기 음성을 중단하고 기존 `/api/calls/<device_id>/end` API로 종료합니다. 서버 연결 실패 시 종료 요청을 재시도하고 다음 발신 전에 처리합니다. 발신은 기존 WebSocket `button` 이벤트를 사용합니다. GPIO23 SOS와 GPIO24 LED는 기존 기능을 유지합니다.
 
-## 부팅 시 자동 업데이트 (현재 버전 1.0.1)
+## 부팅 시 자동 업데이트 (현재 버전 1.0.3)
 
 `VERSION`에 설치 버전을, `release.json`에 버전 및 실행 파일별 SHA-256을 기록합니다.
 시작 스크립트는 기존 Wi-Fi/방송 서버 연결 확인이 끝난 뒤
@@ -203,10 +203,10 @@ GitHub REST API를 사용하지 않으므로 비인증 API 호출 제한(403)을
 생성된 `VERSION`, `release.json`도 함께 `main`에 push합니다.
 
 ```bash
-python3 build_release.py 1.0.2
+python3 build_release.py 1.0.3
 python3 -m unittest discover -v
 git add <수정한파일> VERSION release.json
-git commit -m "Release 1.0.2"
+git commit -m "Release 1.0.3"
 git push origin main
 ```
 
