@@ -12,17 +12,23 @@ class HookController:
         self.revision = 0
         self.dialed = -1
         self.pending_end = None
+        self.armed = False
 
     def changed(self, off_hook):
         with self.lock:
             if self.off_hook == off_hook:
                 return
+            was_armed = self.armed
             previous = self.off_hook
             self.off_hook = off_hook
             self.revision += 1
-            if not off_hook and previous is True:
+            if not off_hook:
+                self.armed = True
+            if not off_hook and previous is True and was_armed:
                 self.pending_end = self.revision
         print('[통화] 수화기 ' + ('들림 (HIGH)' if off_hook else '내려놓음 (LOW)'), file=sys.stderr)
+        if previous is None and off_hook:
+            print('[통화] 시작 시 들림 신호: 자동 발신 차단, 수화기를 내려놓은 뒤 들어 주세요', file=sys.stderr)
         if not off_hook:
             self.silence()
 
@@ -31,7 +37,7 @@ class HookController:
         with self.lock:
             end = self.pending_end
             revision = self.revision
-            dial = self.off_hook and self.dialed != revision
+            dial = self.armed and self.off_hook and self.dialed != revision
         if end is not None:
             if self.hangup():
                 with self.lock:

@@ -178,4 +178,39 @@ Wi-Fi 연결이 60초 이상 끊기면 저장된 목록을 재시도하고, 모�
 
 `--hook-gpio 4`로 BCM GPIO4(물리 핀 7)를 내부 풀업 입력으로 사용합니다. 수화기 스위치를 GPIO4와 GND 사이에 연결합니다. LOW는 내려놓음(통화 종료), HIGH는 들림(발신)입니다. 물리 핀 4는 GPIO4가 아니므로 연결하지 않습니다. 반대 극성의 스위치는 접점 배선을 바꿔야 합니다.
 
-접점은 기본 450ms 동안 안정된 상태만 처리합니다. 시작 시 이미 HIGH면 서버 연결 후 발신하며, LOW면 발신하지 않습니다. 내려놓으면 로컬 수화기 음성을 중단하고 기존 `/api/calls/<device_id>/end` API로 종료합니다. 서버 연결 실패 시 종료 요청을 재시도하고 다음 발신 전에 처리합니다. 발신은 기존 WebSocket `button` 이벤트를 사용합니다. GPIO23 SOS와 GPIO24 LED는 기존 기능을 유지합니다.
+접점은 기본 450ms 동안 안정된 상태만 처리합니다. 시작 시에는 HIGH/LOW 어느 상태에서도 발신하지 않습니다. LOW(내려놓음)가 확인된 뒤 HIGH(들림)로 바뀔 때만 발신합니다. 서버에서 통화를 종료해도 수화기를 내려놓았다가 다시 들면 새로 발신합니다. 내려놓으면 로컬 수화기 음성을 중단하고 기존 `/api/calls/<device_id>/end` API로 종료합니다. 서버 연결 실패 시 종료 요청을 재시도하고 다음 발신 전에 처리합니다. 발신은 기존 WebSocket `button` 이벤트를 사용합니다. GPIO23 SOS와 GPIO24 LED는 기존 기능을 유지합니다.
+
+## 부팅 시 자동 업데이트 (현재 버전 1.0.1)
+
+`VERSION`에 설치 버전을, `release.json`에 버전 및 실행 파일별 SHA-256을 기록합니다.
+시작 스크립트는 기존 Wi-Fi/방송 서버 연결 확인이 끝난 뒤
+`ttnada132-gif/alarm_voice_rpi`의 `main` 최신 커밋을 확인합니다.
+설치 버전보다 높은 `MAJOR.MINOR.PATCH` 버전일 때만 해당 커밋의 코드를 내려받습니다.
+파일 목록·해시·Python/Bash 구문을 검증한 뒤 `/home/pi/shinwhatech`에 적용하고
+시작 스크립트를 새 코드로 다시 실행합니다. Wi-Fi 설정 서비스도 재시작합니다.
+라즈베리파이 OS 전체를 재부팅하지는 않습니다.
+
+- `wifi_portal.json`, `wifi_networks.csv`, `last_location.json`, `log.txt` 등 장치별 데이터는 보존합니다.
+- GitHub 연결/다운로드/검증 실패 시 기존 코드로 실행합니다. 낮거나 같은 버전은 설치하지 않습니다.
+- 적용 중 오류 시 이전 파일로 복원합니다. 전원 차단 등으로 중단되면 다음 시작 시 네트워크 확인 전에 복원합니다.
+- 직전 파일 백업은 `.update-backup/`에 보관하며, 진행 중인 복구 정보는 `.update-transaction/`에 보관합니다.
+- 업데이트 결과와 버전은 `log.txt`의 `[업데이트]` 항목에서 확인할 수 있습니다.
+- 실행 코드와 템플릿, 알람 음원만 업데이트합니다. Python 패키지 설치와 systemd 유닛 변경은 자동화하지 않습니다. 이 릴리스는 추가 패키지가 필요 없습니다.
+- 실행 폴더에는 Git 저장소나 GitHub 인증정보가 필요하지 않습니다. 공개 저장소의 HTTPS 주소를 이용합니다.
+
+새 버전을 배포할 때는 코드를 수정한 후 **마지막으로** 아래 명령을 실행하고,
+생성된 `VERSION`, `release.json`도 함께 `main`에 push합니다.
+
+```bash
+python3 build_release.py 1.0.2
+python3 -m unittest discover -v
+git add <수정한파일> VERSION release.json
+git commit -m "Release 1.0.2"
+git push origin main
+```
+
+버전을 올리지 않으면 코드를 push해도 장치는 업데이트하지 않습니다.
+릴리스 파일을 수정하면 `build_release.py`를 다시 실행하여 해시를 갱신해야 합니다.
+이미 설치된 장치는 다음 부팅 또는 `sudo systemctl restart shinwhatech-raspi-agent` 시 확인합니다.
+구버전 시작 스크립트에는 자동 업데이트 기능이 없으므로 최초 한 번은
+`auto_update.py`와 새 `run_raspi_agent.sh`를 실행 폴더에 설치해야 합니다.

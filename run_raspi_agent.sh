@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="/home/pi/shinwhatech"
 cd "$SCRIPT_DIR"
 
+# Recover an interrupted update before reading settings or running network code.
+/usr/bin/python3 "$SCRIPT_DIR/auto_update.py" --root "$SCRIPT_DIR" --recover-only
+
 # Open the monitor for desktop launches, not systemd restarts.
 if [[ -z "${INVOCATION_ID:-}" && -n "${DISPLAY:-}" ]]; then
   "$SCRIPT_DIR/show_logs.sh" >/dev/null 2>&1 &
@@ -34,6 +37,25 @@ log_message() {
   --connect-timeout-seconds 25 \
   --hook-gpio 4 \
   --log-file "$LOG_FILE"
+
+# Check only once when re-executing this launcher after an update.
+if [[ "${ALARM_UPDATE_RESTARTED:-0}" != "1" ]]; then
+  UPDATE_STATUS=0
+  /usr/bin/python3 "$SCRIPT_DIR/auto_update.py" --root "$SCRIPT_DIR" || UPDATE_STATUS=$?
+  if [[ "$UPDATE_STATUS" == "10" ]]; then
+    # The Wi-Fi portal also loads Python/templates from the updated directory.
+    if [[ "$(id -u)" == "0" ]]; then
+      systemctl try-restart shinwhatech-wifi-portal.service || true
+    else
+      sudo -n systemctl try-restart shinwhatech-wifi-portal.service || true
+    fi
+    export ALARM_UPDATE_RESTARTED=1
+    exec /bin/bash "$SCRIPT_DIR/run_raspi_agent.sh"
+  elif [[ "$UPDATE_STATUS" != "0" ]]; then
+    exit "$UPDATE_STATUS"
+  fi
+fi
+unset ALARM_UPDATE_RESTARTED
 
 pkill -x aplay 2>/dev/null || true
 pkill -f "/home/pi/shinwhatech/raspi_agent.py" 2>/dev/null || true

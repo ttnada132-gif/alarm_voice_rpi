@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.update-*/
+.update.lock
+log.txt
+wifi_portal.json
+wifi_networks.csv
+last_location.json

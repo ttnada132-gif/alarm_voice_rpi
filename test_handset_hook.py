@@ -9,6 +9,33 @@ class HookTests(unittest.TestCase):
         self.end = Mock(return_value=True)
         self.silence = Mock()
         self.hook = HookController(self.dial, self.end, self.silence)
+        self.hook.changed(False)
+        self.silence.reset_mock()
+
+    def test_initial_high_is_not_a_lift(self):
+        hook = HookController(self.dial, self.end, self.silence)
+        hook.changed(True)
+        for _ in range(3):
+            hook.sync()
+        self.dial.assert_not_called()
+        hook.changed(False)
+        hook.sync()
+        self.end.assert_not_called()
+        hook.changed(True)
+        hook.sync()
+        self.dial.assert_called_once()
+
+    def test_remote_end_requires_replacement_before_redial(self):
+        self.hook.changed(True)
+        self.hook.sync()
+        # The server ending a call must not redial a still-lifted handset.
+        self.hook.sync()
+        self.dial.assert_called_once()
+        self.hook.changed(False)
+        self.hook.sync()
+        self.hook.changed(True)
+        self.hook.sync()
+        self.assertEqual(self.dial.call_count, 2)
 
     def test_initial_on_hook_does_not_call(self):
         self.hook.changed(False)
