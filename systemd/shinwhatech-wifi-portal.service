@@ -1,0 +1,17 @@
+[Unit]
+Description=ShinwhaTech Wi-Fi setup page and connection manager
+After=dhcpcd.service
+Requires=dhcpcd.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/shinwhatech
+ExecStart=/usr/bin/python3 -u /home/pi/shinwhatech/wifi_portal.py
+RuntimeDirectory=shinwhatech-wifi
+RuntimeDirectoryMode=0755
+Restart=always
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

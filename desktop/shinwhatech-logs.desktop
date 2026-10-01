@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=방송 수화기 연결 로그
+Comment=로그인 시 방송 서비스 상태와 수화기 로그를 자동으로 표시
+Exec=/home/pi/shinwhatech/show_logs.sh
+Icon=utilities-terminal
+Terminal=false
+X-GNOME-Autostart-enabled=true

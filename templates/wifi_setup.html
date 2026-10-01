@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>방송 장치 Wi-Fi 설정</title>
+<style>
+body{margin:0;background:#101923;color:#eef4fa;font:16px/1.6 sans-serif}main{max-width:520px;margin:40px auto;padding:0 20px}h1{font-size:26px}section,form{background:#1b2938;border:1px solid #34475c;border-radius:14px;padding:20px;margin:18px 0}label{display:block;margin:14px 0 6px}input,button{box-sizing:border-box;width:100%;padding:13px;border-radius:8px;border:1px solid #577087;font:inherit}input{background:#111d29;color:white}button{background:#65d6b4;color:#10231d;font-weight:bold;margin-top:22px;cursor:pointer}.hint{color:#b5c9db;font-size:14px}strong{color:#80e5c5}a{color:#80e5c5}
+</style>
+<main>
+<p class="hint">{{ cfg.device_id }}</p><h1>방송 장치 Wi-Fi 설정</h1>
+{% if connection_saved %}
+<section><strong>서버 접속정보를 저장했습니다.</strong><p>새 설정으로 방송 서버에 다시 연결합니다. 설정용 Wi-Fi 사용 중이면 Wi-Fi 연결 후 적용됩니다.</p></section>
+{% endif %}
+{% if saved %}
+<section><strong>새 Wi-Fi에 연결을 시도합니다.</strong><p>Wi-Fi 전환 중 이 페이지의 연결이 끊길 수 있습니다. 성공하면 휴대폰을 같은 Wi-Fi에 연결해 장치의 새 IP 주소로 접속하세요.</p><p>연결에 실패하면 약 1분 이내에 <b>{{ cfg.ap_ssid }}</b>가 다시 나타납니다. 해당 Wi-Fi에 연결한 뒤 <a href="http://{{ cfg.ap_ip }}/">설정 페이지</a>를 여세요.</p></section>
+{% endif %}
+<section><strong id="message">{{ state.message }}</strong><div>연결 Wi-Fi: <span id="ssid">{{ state.ssid or '미연결' }}</span></div><div>장치 IP: <span id="ip">{{ state.ip or '확인 중' }}</span></div><p class="hint">Wi-Fi 연결 후 방송 서버의 응답을 기다립니다. 서버 응답 지연만으로 Wi-Fi를 바꾸지는 않습니다.</p></section>
+<form method="post" action="/connection">
+<h2>서버 접속정보</h2>
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<label for="device-id">기기 ID (device-id)</label><input id="device-id" name="device_id" value="{{ cfg.device_id }}" required maxlength="128" pattern="[A-Za-z0-9_-]+" autocomplete="off" spellcheck="false">
+<label for="server-url">서버 URL (SERVER_URL)</label><input id="server-url" name="server_url" type="url" value="{{ cfg.server_url }}" required maxlength="1024" placeholder="https://call.raycom.co.kr:45001" autocomplete="off" spellcheck="false">
+<label for="stream-token">스트림 토큰 (STREAM_TOKEN)</label><input id="stream-token" name="stream_token" type="password" value="{{ cfg.stream_token }}" required maxlength="512" autocomplete="off">
+<button type="button" id="toggle-token" aria-controls="stream-token" aria-pressed="false">토큰 보기</button>
+<p class="hint">저장하면 방송 연결이 잠시 중단될 수 있습니다. 현재 Wi-Fi 설정은 유지됩니다.</p>
+<button type="submit">접속정보 저장 및 적용</button>
+</form>
+<form method="post" action="/save">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<label for="name">연결할 Wi-Fi 이름</label><input id="name" name="ssid" required maxlength="32" autocomplete="off" placeholder="공유기의 Wi-Fi 이름">
+<label for="password">Wi-Fi 비밀번호</label><input id="password" name="password" type="password" autocomplete="new-password" maxlength="64" placeholder="공개 Wi-Fi는 비워두세요">
+<p class="hint">새 Wi-Fi 연결에 성공하면 저장 목록의 첫 번째 순서로 등록됩니다. 변경 중에는 방송 연결이 잠시 중단됩니다.</p>
+<button>저장하고 연결 시험</button></form>
+<p class="hint">설정용 Wi-Fi: {{ cfg.ap_ssid }}<br>설정 주소: http://{{ cfg.ap_ip }}/<br>이 페이지를 닫아도 장치는 계속 동작합니다.</p>
+</main>
+<script>
+document.getElementById('toggle-token').addEventListener('click',function(){const input=document.getElementById('stream-token');const show=input.type==='password';input.type=show?'text':'password';this.textContent=show?'토큰 숨기기':'토큰 보기';this.setAttribute('aria-pressed',String(show))});
+setInterval(async()=>{try{const r=await fetch('/status');if(!r.ok)return;const s=await r.json();for(const k of ['message','ssid','ip'])document.getElementById(k).textContent=s[k]||'미연결'}catch(e){}},5000);
+</script>
+</html>

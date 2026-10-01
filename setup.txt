@@ -1,0 +1,176 @@
+Shinwha Tech Voice - setup memo
+================================
+
+1. Server PC setup (Windows)
+---------------------------
+
+Required:
+- Python 3.11 or newer
+- Windows PowerShell
+- Browser with microphone permission support: Chrome or Edge recommended
+
+Python modules used by this project:
+- Flask
+- Flask-Sock
+- websocket-client
+- sounddevice
+- pyserial
+- pytest
+
+Install commands:
+
+cd d:\eni_develop\server_test\shinwha_tech_voice
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+Optional Windows firewall rule for Raspberry Pi access to port 5000.
+Run PowerShell as Administrator:
+
+New-NetFirewallRule -DisplayName "Shinwha Voice Flask 5000" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow
+
+Start the server:
+
+cd d:\eni_develop\server_test\shinwha_tech_voice
+$env:STREAM_TOKEN = "change-this-token"
+.\.venv\Scripts\python.exe app.py
+
+Open in the server PC browser:
+
+http://127.0.0.1:5000
+
+Open from another device on the same LAN:
+
+http://192.168.0.2:5000
+
+Notes:
+- Browser microphone permission is required when answering a call.
+- Server-side TTS uses Windows built-in SAPI voices.
+- The same STREAM_TOKEN must be used by the Raspberry Pi agent.
+
+
+2. Raspberry Pi setup
+---------------------
+
+Project path on Raspberry Pi:
+
+/home/pi/shinwhatech
+
+Required:
+- Python 3
+- pip
+- ALSA tools: arecord/aplay
+- websocket-client Python module
+- pyserial Python module for GPS serial reading
+- Optional: evtest for finding the USB handset button event device
+- Optional: RPi.GPIO if the button is wired to GPIO instead of USB input event
+- mpg123 for GPIO 23 MP3 alarm playback
+
+Install OS packages:
+
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv alsa-utils evtest mpg123 libportaudio2 portaudio19-dev
+
+Optional GPIO package:
+
+sudo apt install -y python3-rpi.gpio
+
+Allow the pi user to use audio and input devices:
+
+sudo usermod -aG audio,input pi
+
+After changing groups, log out and log in again, or reboot:
+
+sudo reboot
+
+Install Python modules:
+
+cd /home/pi/shinwhatech
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+
+Find ALSA devices:
+
+aplay -l
+arecord -l
+
+Find USB handset button input device:
+
+ls -l /dev/input/by-id
+sudo evtest
+
+Example Raspberry Pi run command for USB handset button:
+
+cd /home/pi/shinwhatech
+python3 raspi_agent.py \
+  --server http://192.168.0.2:5000 \
+  --token change-this-token \
+  --device-id pi-lab-1 \
+  --company-name Shinwha \
+  --install-location Office-A \
+  --handset-input-device plughw:1,0 \
+  --handset-speaker-device plughw:1,0 \
+  --aux-device plughw:0,0 \
+  --button-device /dev/input/event0 \
+  --gpio-alert-pin 23 \
+  --gpio-alert-led-pin 24 \
+  --gpio-alert-file /home/pi/shinwhatech/0001.mp3 \
+  --gpio-alert-interval-seconds 10 \
+  --gps-port /dev/serial0 \
+  --gps-interval-seconds 60 \
+  --gps-cache-file /home/pi/shinwhatech/last_location.json
+
+Example Raspberry Pi run command for GPIO button on BCM GPIO 17:
+
+cd /home/pi/shinwhatech
+python3 raspi_agent.py \
+  --server http://192.168.0.2:5000 \
+  --token change-this-token \
+  --device-id pi-lab-1 \
+  --company-name Shinwha \
+  --install-location Office-A \
+  --handset-input-device plughw:1,0 \
+  --handset-speaker-device plughw:1,0 \
+  --aux-device plughw:0,0 \
+  --button-gpio 17 \
+  --gpio-alert-pin 23 \
+  --gpio-alert-led-pin 24 \
+  --gpio-alert-file /home/pi/shinwhatech/0001.mp3 \
+  --gpio-alert-interval-seconds 10 \
+  --gps-port /dev/serial0 \
+  --gps-interval-seconds 60 \
+  --gps-cache-file /home/pi/shinwhatech/last_location.json
+
+Runtime behavior:
+- Press the USB handset button to show an incoming call on the web page.
+- The USB handset speaker plays the ring tone while waiting for answer.
+- Click Answer in the web page to start two-way voice.
+- Press the USB handset button during a call to end the call.
+- Click Confirm in the web page to return the device row to standby.
+- TTS messages from the web page play through the Raspberry Pi AUX device, not the USB handset speaker.
+- GPIO 23 LOW plays /home/pi/shinwhatech/0001.mp3 every 10 seconds and sends alert 0001 to the server.
+- GPIO 24 is set HIGH while the GPIO 23 alert is active, and LOW after Confirm Alert.
+- GPS is read once per minute and sent to the server as latitude/longitude. If GPS cannot be read, the last cached value in last_location.json is sent.
+- The server converts latitude/longitude to a Korean address and displays latitude, longitude, and address in each device card.
+- Click Confirm Alert in the web page to stop the server browser alarm, Raspberry Pi local MP3 alarm, and GPIO 24 LED.
+
+Troubleshooting:
+- If the USB handset speaker is silent, check --handset-speaker-device with aplay -l.
+- If the USB handset microphone is silent, check --handset-input-device with arecord -l.
+- If TTS plays from the wrong output, change --aux-device.
+- If the button does not trigger calls, verify --button-device with sudo evtest.
+- If /dev/input/event* cannot be read without sudo, confirm the pi user is in the input group and reboot.
+- If the GPIO 23 alarm does not play locally, confirm 0001.mp3 exists and mpg123 is installed.
+- If the server browser does not play the alarm, confirm voice_server/static/0001.mp3 exists and the browser allows audio playback.
+- If GPS stays blank, confirm /dev/serial0 is enabled and pyserial is installed.
+
+
+USB handset audio volume fix:
+
+amixer -c Audio sset PCM 90% unmute
+amixer -c Audio sset Mic 100% cap
+pkill -x aplay || true
+pulseaudio -k || true
+
+The run_raspi_agent.sh script applies these before starting raspi_agent.py so the USB handset speaker is not left muted or too quiet.
