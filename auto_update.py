@@ -21,7 +21,7 @@ BRANCH = 'main'
 FILES = (
     'auto_update.py', 'run_raspi_agent.sh', 'auto_start.sh', 'show_logs.sh',
     'connection_config.py', 'find_handset.py', 'gps_latlon.py', 'handset_hook.py',
-    'raspi_agent.py', 'raspi_mic_sender.py', 'wifi_connect.py', 'wifi_portal.py',
+    'battery_sensor.py', 'raspi_agent.py', 'raspi_mic_sender.py', 'wifi_connect.py', 'wifi_portal.py',
     'templates/wifi_setup.html', '0001.mp3', 'VERSION',
 )
 MAX_DOWNLOAD = 20 * 1024 * 1024

@@ -1,7 +1,7 @@
 {
   "version": "1.0.3",
   "files": {
-    "auto_update.py": "8b20172ccb4bca9f0801776b5a6a26b1cd5baa532fe95be0b9f079342a54e767",
+    "auto_update.py": "b7b026cea42569b1f1e8eca2590d1838571b01ada3034c371215e724fae61b32",
     "run_raspi_agent.sh": "9ec9c0a60f6ef1b93ace2323aa1680fda70044fa0518bd2e158698344a7bfafa",
     "auto_start.sh": "5f4f4f43b7328648e01b5904e62800acf5c9f305cbfc5dc9e9cd1c18d9bd8ae4",
     "show_logs.sh": "e8bfdba33527888fb3b67c8a8e4800f3c5ad7d4307202f405c0d8b174e0f15a9",
@@ -9,7 +9,8 @@
     "find_handset.py": "cbe67d3f01e2f6dbd84d82e229d61bcbc9bd989079891b36d6eca72063c360e5",
     "gps_latlon.py": "dc749b8b90a1c387e6e8a9963bc6f04c3fcd658115e88c5a3133a9631a84d30e",
     "handset_hook.py": "f1de373fd914568f69c5f4b32cc8e7e3cbdb7ee03ef50f823d06c320fc2a64d7",
-    "raspi_agent.py": "0715063b623c9f9588c304c42dcd5f6c9e91a4edcfd51d95b2b6de7ab3c20fe0",
+    "battery_sensor.py": "3f2a2ca21958386de5513400ce52b805577f7a4a9608108e1d486ad4c265ecc0",
+    "raspi_agent.py": "e7a5509c3cef94c701b604dd16cecd24d14f49e8e74d1649a255a041bc86ff78",
     "raspi_mic_sender.py": "3e102021ebeb3db3437939febeba80fbb50be6126ec886525e125c9a7b1b24b3",
     "wifi_connect.py": "d541b19169b461210d6aec91e194779b58c7de06e100f53900e98cd3fbca539e",
     "wifi_portal.py": "cb31dde1fae1ba254f8a2e3648cf63663c714582fb15e9b5253950c4b2ee8dca",

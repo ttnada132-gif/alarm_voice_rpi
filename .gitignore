@@ -7,3 +7,4 @@ log.txt
 wifi_portal.json
 wifi_networks.csv
 last_location.json
+battery_calibration.json

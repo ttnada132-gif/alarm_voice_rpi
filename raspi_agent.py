@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from datetime import datetime, timedelta, timezone
 import json
 import math
 import os
@@ -17,6 +18,7 @@ from urllib.parse import quote, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 import websocket
+from battery_sensor import BatteryMonitor, read_battery
 from handset_hook import GpioHookWatcher, HookController
 
 
@@ -123,7 +125,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--server", required=True, help="Server URL such as http://192.168.0.10:5000")
     parser.add_argument("--token", required=True, help="Shared stream token configured on the Flask server")
+    parser.add_argument("--sos-token", default=os.environ.get("SOS_TOKEN", ""), help="Token used only for SOS HTTP POST requests")
     parser.add_argument("--device-id", default=default_device_id(), help="Stable Raspberry Pi ID")
+    parser.add_argument("--sos-aid", default=os.environ.get("SOS_AID"), help="SOS gateway ID (defaults to device ID)")
+    parser.add_argument("--sos-nid", default=os.environ.get("SOS_NID"), help="SOS node ID (defaults to device ID)")
     parser.add_argument("--source-name", help="Human-readable device name shown in the UI")
     parser.add_argument("--company-name", default="", help="Company name shown in the server UI")
     parser.add_argument("--install-location", default="", help="Install location shown in the server UI")
@@ -245,6 +250,43 @@ def post_json(server_url: str, path: str, token: str, payload: dict) -> dict:
     with urlopen(request, timeout=10) as response:
         body = response.read().decode("utf-8")
         return json.loads(body) if body else {}
+
+
+SOS_URL = "http://iotgw.raycom.co.kr:8089/libra/iot/gw/v1.0/node"
+
+
+def build_sos_payload(args: argparse.Namespace, location: dict | None, battery: dict | None = None) -> dict:
+    timestamp = datetime.now(timezone(timedelta(hours=9))).isoformat(timespec="seconds")
+    location = location or {}
+    return {
+        "type": "AP",
+        "aid": args.sos_aid or args.device_id,
+        "time": timestamp,
+        "state": "normal",
+        "node": {
+            "nid": args.sos_nid or args.device_id,
+            "time": timestamp,
+            "state": "normal",
+            "measurements": {
+                "signal": [{"type": "help", "value": "on"}],
+                "gps": {"lat": location.get("latitude"), "lon": location.get("longitude")},
+                "battery": battery if battery is not None else {"voltage": None, "percent": None},
+            },
+        },
+    }
+
+
+def post_sos(token: str, payload: dict) -> None:
+    if not token:
+        raise ValueError("SOS_TOKEN 또는 --sos-token 설정이 필요합니다")
+    request = Request(
+        SOS_URL,
+        data=json.dumps(payload, allow_nan=False).encode("utf-8"),
+        headers={"Content-Type": "application/json", "token": token},
+        method="POST",
+    )
+    with urlopen(request, timeout=10) as response:
+        response.read()
 
 
 def build_device_payload(args: argparse.Namespace, location: dict | None = None) -> dict:
@@ -882,6 +924,16 @@ class GpsLocationProvider:
         self._receive_status = 'GPS 응답 확인 중'
         self._monitor_stop = threading.Event()
         self._location = self._load_cache()
+        self._current_fix = None
+        self._current_fix_at = 0.0
+
+    def get_current_location(self) -> dict | None:
+        """Only a recent successful live fix, never the disk cache."""
+        with self._lock:
+            max_age = self._interval_seconds + self._read_timeout_seconds
+            if self._disabled or not self._current_fix or time.monotonic() - self._current_fix_at > max_age:
+                return None
+            return dict(self._current_fix)
 
     def get_location(self, *, force: bool = False) -> dict | None:
         with self._lock:
@@ -897,6 +949,9 @@ class GpsLocationProvider:
 
         try:
             location = self._read_once()
+            with self._lock:
+                self._current_fix = dict(location) if location else None
+                self._current_fix_at = time.monotonic() if location else 0.0
             if location:
                 with self._lock:
                     self._location = location
@@ -1375,6 +1430,8 @@ def main(args: argparse.Namespace) -> int:
     def current_payload(*, force_gps: bool = False) -> dict:
         return build_device_payload(args, location_provider.get_location(force=force_gps))
 
+    battery_monitor = BatteryMonitor(interval_seconds=5)
+    battery_monitor.start()
     payload = current_payload(force_gps=True)
     location_provider.start_monitor()
 
@@ -1389,6 +1446,7 @@ def main(args: argparse.Namespace) -> int:
             if is_dns_error(exc):
                 time.sleep(max(1, args.reconnect_seconds))
                 continue
+            battery_monitor.stop()
             location_provider.stop_monitor()
             return 1
 
@@ -1468,26 +1526,22 @@ def main(args: argparse.Namespace) -> int:
 
     def send_gpio_alert() -> None:
         print(f"[SOS] 서버 알림 전송 시도: {args.device_id}", file=sys.stderr)
-        message = json.dumps(
-            {
-                "type": "gpio_alert",
-                "alert_code": "0001",
-                "message": "GPIO 23 LOW",
-                **current_payload(),
-            }
-        )
-        ws = ws_holder.get("ws")
-        if ws is None:
-            print("GPIO alert active, but server WebSocket is not connected.", file=sys.stderr)
-            return
+        def transmit():
+            try:
+                try:
+                    battery = read_battery()
+                except Exception as exc:
+                    print(f"[BATTERY] 읽기 실패: {exc}", file=sys.stderr)
+                    battery = None
+                payload = build_sos_payload(args, location_provider.get_current_location(), battery)
+                post_sos(args.sos_token, payload)
+            except Exception as exc:
+                print(f"[SOS] 서버 알림 전송 실패: {exc}", file=sys.stderr)
+            else:
+                print(f"[SOS] 서버 알림 전송 완료: {args.device_id}", file=sys.stderr)
 
-        try:
-            with ws_lock:
-                ws.send(message)
-        except Exception as exc:
-            print(f"Could not send GPIO alert: {exc}", file=sys.stderr)
-        else:
-            print(f"[SOS] 서버 알림 전송 완료: {args.device_id}", file=sys.stderr)
+        # Keep GPIO release detection and alarm stopping responsive during HTTP I/O.
+        threading.Thread(target=transmit, name="sos-http", daemon=True).start()
 
     button_watchers = []
     if hook_controller is not None:
@@ -1583,6 +1637,7 @@ def main(args: argparse.Namespace) -> int:
                 if ws_holder.get("ws") is ws:
                     ws_holder["ws"] = None
     finally:
+        battery_monitor.stop()
         location_provider.stop_monitor()
         for watcher in button_watchers:
             watcher.stop()

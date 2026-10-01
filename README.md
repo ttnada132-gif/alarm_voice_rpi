@@ -196,7 +196,7 @@ GitHub REST API를 사용하지 않으므로 비인증 API 호출 제한(403)을
 - 적용 중 오류 시 이전 파일로 복원합니다. 전원 차단 등으로 중단되면 다음 시작 시 네트워크 확인 전에 복원합니다.
 - 직전 파일 백업은 `.update-backup/`에 보관하며, 진행 중인 복구 정보는 `.update-transaction/`에 보관합니다.
 - 업데이트 결과와 버전은 `log.txt`의 `[업데이트]` 항목에서 확인할 수 있습니다.
-- 실행 코드와 템플릿, 알람 음원만 업데이트합니다. Python 패키지 설치와 systemd 유닛 변경은 자동화하지 않습니다. 이 릴리스는 추가 패키지가 필요 없습니다.
+- 실행 코드와 템플릿, 알람 음원만 업데이트합니다. Python 패키지 설치와 systemd 유닛 변경은 자동화하지 않습니다. 배터리 측정에는 `python3-smbus`와 I2C 활성화가 필요합니다.
 - `git` 실행 파일이 필요합니다 (`sudo apt-get install git`). 실행 폴더에는 Git 저장소나 GitHub 인증정보가 필요하지 않습니다. 공개 저장소의 HTTPS 주소를 이용합니다.
 
 새 버전을 배포할 때는 코드를 수정한 후 **마지막으로** 아래 명령을 실행하고,
@@ -217,3 +217,21 @@ git push origin main
 `auto_update.py`와 새 `run_raspi_agent.sh`를 실행 폴더에 설치해야 합니다.
 
 DNS가 준비되지 않은 동안 등록·상태 보고·방송 재접속은 자동 재시도하며, 같은 대기 상태의 오류를 반복 출력하지 않습니다. 다른 서버 오류는 로그에 표시합니다.
+
+### SOS HTTP 전송
+
+GPIO23 SOS 버튼을 누르면 `http://iotgw.raycom.co.kr:8089/libra/iot/gw/v1.0/node`로 JSON을 POST합니다. `Content-Type: application/json`, `token` 헤더를 사용하며 토큰은 방송 서버 토큰과 별개이며 `--sos-token` 또는 환경변수 `SOS_TOKEN`으로 설정합니다. 실제 인증 토큰은 저장소에 포함하지 않습니다. 미설정 시 SOS 전송을 하지 않고 오류를 기록합니다.
+
+`type`은 `AP`, 상위 및 node의 `state`는 `normal`이고, `node.measurements`에는 `signal: [{"type": "help", "value": "on"}]`과 `gps: {"lat": 위도, "lon": 경도}`, `battery: {"voltage": 전압, "percent": 잔량}`을 포함합니다. 가스·온습도 및 RSSI 값은 넣지 않습니다. 시간은 실제 전송 시각(+09:00)입니다. SOS GPS는 최근 실시간 수신 좌표만 사용합니다. 캐시 좌표는 보내지 않으며, 수신 실패 또는 유효 시간 경과 시 lat/lon은 null입니다. 일반 장치 상태 보고의 기존 GPS 캐시 동작은 유지합니다.
+
+`aid`와 `node.nid`는 기본적으로 기존 장치 ID입니다. 서버에 별도 등록된 ID가 있으면 `--sos-aid`/`--sos-nid` 또는 환경변수 `SOS_AID`/`SOS_NID`로 지정합니다. HTTP 전송은 별도 스레드에서 처리하여 버튼 해제 감지를 막지 않습니다. 실패는 SOS 로그에 기록되며 자동 재전송은 하지 않습니다.
+
+### 배터리 측정 및 현재 소스 적용
+
+`battery_sensor.py`는 I2C ADS1115 AIN0에서 배터리를 측정합니다. 5초마다 전압과 잔량을 기록하고 SOS 전송 시 다시 측정합니다. 측정 실패 시 SOS 배터리 값은 null입니다.
+
+- OS에 `sudo apt install python3-smbus`를 설치하고 I2C를 활성화합니다.
+- 실행 폴더의 `battery_calibration.json`에 `bus`, `address`, `full_raw`, `full_voltage`, `empty_voltage`를 설정합니다. `full_raw`는 해당 장치의 완충 기준 실측값입니다. 장치별 보정 파일은 Git 및 자동 업데이트 대상에서 제외합니다.
+- 서비스 환경에 `SOS_TOKEN`을 설정해야 합니다. 기존 실행 장치의 설정 파일과 인증정보를 보존합니다.
+
+현재 커밋은 운영 소스 동기화이며 자동 배포 버전은 1.0.3으로 유지합니다. 기존 1.0.3 장치는 같은 버전을 자동 적용하지 않습니다. 배터리 모듈 추가로 업데이트 파일 목록이 바뀌었으므로, 후속 버전 배포 전에 기존 장치의 `auto_update.py`를 새 목록을 지원하는 코드로 먼저 설치해야 합니다. 최초 수동 설치 시 `battery_sensor.py`도 함께 복사합니다.
