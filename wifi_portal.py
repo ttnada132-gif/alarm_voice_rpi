@@ -12,7 +12,7 @@ import subprocess
 import threading
 import time
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request
 from connection_config import validate_connection
 from wifi_connect import load_wifi_networks, server_is_reachable, log
 
@@ -142,7 +142,7 @@ class Manager:
         self.note('설정용 Wi-Fi 시작 중')
         command(['systemctl', 'stop', SERVICE], timeout=30)
         self.stop_ap()
-        self.ap_id = self.create_network(self.cfg['ap_ssid'], self.cfg['ap_password'], ap=True)
+        self.ap_id = self.create_network(self.cfg['ap_ssid'], '', ap=True)
         self.static_ap_address(True)
         wpa('select_network', self.ap_id)
         deadline = time.monotonic() + 20
@@ -233,8 +233,8 @@ class Manager:
 
     def run(self):
         failed_since = None
-        # Recover a static AP address left by an interrupted transition.
-        if BEGIN in DHCP.read_text():
+        # Recover only a stale AP address, not an AP started by this manager.
+        if self.ap_id is None and BEGIN in DHCP.read_text():
             self.static_ap_address(False)
             wpa('reconfigure')
         while True:
@@ -308,11 +308,7 @@ def create_app(manager):
     csrf = secrets.token_urlsafe(32)
 
     @app.before_request
-    def authorize():
-        auth = request.authorization
-        if not auth or auth.username != manager.cfg.get('admin_username', 'admin') or not hmac.compare_digest(
-                auth.password or '', manager.cfg['admin_password']):
-            return Response('로그인이 필요합니다.', 401, {'WWW-Authenticate': 'Basic realm="Wi-Fi Setup"'})
+    def protect_form_submission():
         if request.method == 'POST' and not hmac.compare_digest(request.form.get('csrf', ''), csrf):
             return '페이지를 새로고침한 뒤 다시 시도하세요.', 403
 

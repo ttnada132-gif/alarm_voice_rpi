@@ -160,9 +160,9 @@ pytest
 
 ## 방송 장치 웹 Wi-Fi 설정
 
-`shinwhatech-wifi-portal.service`와 `shinwhatech-raspi-agent.service`는 부팅 시 자동 실행됩니다. 같은 Wi-Fi에서 장치 IP의 HTTP 주소로 접속해 Wi-Fi 이름과 비밀번호를 저장합니다. 웹 로그인 아이디는 `wifi_portal.json`의 `admin_username`(현재 `sd365`)이며 비밀번호는 `wifi_portal.json`의 `admin_password`입니다.
+`shinwhatech-wifi-portal.service`와 `shinwhatech-raspi-agent.service`는 부팅 시 자동 실행됩니다. 같은 Wi-Fi에서 장치 IP의 HTTP 주소로 접속해 Wi-Fi 이름과 비밀번호를 저장합니다. 설정 페이지는 아이디와 비밀번호 입력 없이 바로 열립니다. 기존 `admin_username`, `admin_password` 설정은 사용하지 않습니다.
 
-Wi-Fi 연결이 60초 이상 끊기면 저장된 목록을 재시도하고, 모두 실패하면 `sh_voice_alarm` 설정용 Wi-Fi를 엽니다. 비밀번호는 설정 파일의 `ap_password`이며 접속 주소는 `http://192.168.4.1/`입니다. 새 Wi-Fi 연결에 성공하면 저장하고 방송 서비스를 시작하며, 방송 프로그램은 방송 서버 연결 확인 후 실행합니다. 서버만 응답하지 않는 경우 기존 Wi-Fi를 유지합니다.
+Wi-Fi 연결이 60초 이상 끊기면 저장된 목록을 재시도하고, 모두 실패하면 `sh_voice_alarm` 설정용 Wi-Fi를 엽니다. 설정용 AP는 비밀번호 없이 접속할 수 있으며(기존 `ap_password` 값은 사용하지 않음), 접속 주소는 `http://192.168.4.1/`입니다. 새 Wi-Fi 연결에 성공하면 저장하고 방송 서비스를 시작하며, 방송 프로그램은 방송 서버 연결 확인 후 실행합니다. 서버만 응답하지 않는 경우 기존 Wi-Fi를 유지합니다.
 
 상태 확인: `systemctl status shinwhatech-wifi-portal shinwhatech-raspi-agent`
 
@@ -214,3 +214,5 @@ git push origin main
 이미 설치된 장치는 다음 부팅 또는 `sudo systemctl restart shinwhatech-raspi-agent` 시 확인합니다.
 구버전 시작 스크립트에는 자동 업데이트 기능이 없으므로 최초 한 번은
 `auto_update.py`와 새 `run_raspi_agent.sh`를 실행 폴더에 설치해야 합니다.
+
+DNS가 준비되지 않은 동안 등록·상태 보고·방송 재접속은 자동 재시도하며, 같은 대기 상태의 오류를 반복 출력하지 않습니다. 다른 서버 오류는 로그에 표시합니다.

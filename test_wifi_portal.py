@@ -13,27 +13,28 @@ class PortalTests(unittest.TestCase):
         self.manager = portal.Manager({'admin_password': 'test-password', 'connect_timeout_seconds': 0,
                                       'ap_ip': '192.168.4.1', 'ap_ssid': 'test-setup'})
         self.client = portal.create_app(self.manager).test_client()
-        self.auth = {'Authorization': 'Basic YWRtaW46dGVzdC1wYXNzd29yZA=='}
 
     def form_token(self):
         import re
-        response = self.client.get('/', headers=self.auth)
+        response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(b'test-password', response.data)
         return re.search(rb'name="csrf" value="([^"]+)"', response.data)[1].decode()
 
-    def test_auth_and_csrf_required(self):
-        self.assertEqual(self.client.get('/').status_code, 401)
-        self.assertEqual(self.client.get('/status').status_code, 401)
-        self.assertEqual(self.client.post('/save', headers=self.auth).status_code, 403)
+    def test_direct_access_and_csrf_required(self):
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('WWW-Authenticate', response.headers)
+        self.assertEqual(self.client.get('/status').status_code, 200)
+        self.assertEqual(self.client.post('/save').status_code, 403)
 
     def test_validation_and_single_pending_change(self):
         csrf = self.form_token()
-        self.assertEqual(self.client.post('/save', headers=self.auth,
+        self.assertEqual(self.client.post('/save',
                          data={'csrf': csrf, 'ssid': 'router', 'password': 'short'}).status_code, 400)
         data = {'csrf': csrf, 'ssid': 'router', 'password': '12345678'}
-        self.assertEqual(self.client.post('/save', headers=self.auth, data=data).status_code, 200)
-        self.assertEqual(self.client.post('/save', headers=self.auth, data=data).status_code, 409)
+        self.assertEqual(self.client.post('/save', data=data).status_code, 200)
+        self.assertEqual(self.client.post('/save', data=data).status_code, 409)
         self.assertEqual(self.manager.jobs.get_nowait(), ('router', '12345678'))
 
     def test_failed_connection_removes_unsaved_profile(self):
@@ -56,6 +57,24 @@ class PortalTests(unittest.TestCase):
             save.assert_called_once_with('good', '12345678')
             command.assert_any_call(['systemctl', 'start', portal.SERVICE], timeout=30)
             self.assertNotIn(unittest.mock.call('remove_network', '123'), wpa.call_args_list)
+
+    def test_setup_ap_ignores_legacy_password(self):
+        self.manager.cfg['ap_password'] = 'legacy-password'
+        with patch.object(self.manager, 'create_network', return_value='123') as create, \
+             patch.object(self.manager, 'update'), patch.object(self.manager, 'note'), \
+             patch.object(self.manager, 'stop_ap'), patch.object(self.manager, 'static_ap_address'), \
+             patch.object(portal, 'command', return_value='192.168.4.1'), \
+             patch.object(portal, 'wpa', return_value='mode=AP'), \
+             patch.object(portal.time, 'sleep'), patch.object(portal.subprocess, 'Popen') as process:
+            process.return_value.poll.return_value = None
+            self.manager.start_ap()
+            create.assert_called_once_with('test-setup', '', ap=True)
+
+    def test_open_ap_profile_has_no_psk(self):
+        with patch.object(portal, 'wpa', return_value='123') as wpa:
+            self.manager.create_network('test-setup', '', ap=True)
+        wpa.assert_any_call('set_network', '123', 'key_mgmt', 'NONE')
+        self.assertFalse(any('psk' in call.args for call in wpa.call_args_list))
 
     def test_static_address_block_is_reversible(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -82,7 +101,7 @@ class PortalTests(unittest.TestCase):
                 data = {'csrf': csrf, 'device_id': 'SH_VOICE_ALARM_004',
                         'server_url': 'https://call.raycom.co.kr:45001/',
                         'stream_token': 'test-token'}
-                response = self.client.post('/connection', headers=self.auth, data=data)
+                response = self.client.post('/connection', data=data)
                 self.assertEqual(response.status_code, 200)
                 saved = json.loads(config.read_text())
                 self.assertEqual(saved['device_id'], data['device_id'])
@@ -92,13 +111,12 @@ class PortalTests(unittest.TestCase):
                 self.assertEqual(saved['admin_password'], 'test-password')
                 self.assertEqual(config.stat().st_mode & 0o777, 0o600)
                 self.assertEqual(self.manager.jobs.get_nowait(), (None, None))
-                self.assertEqual(self.client.post('/connection', headers=self.auth,
+                self.assertEqual(self.client.post('/connection',
                                                  data=data).status_code, 409)
-                self.assertIn(b'SH_VOICE_ALARM_004', self.client.get('/', headers=self.auth).data)
+                self.assertIn(b'SH_VOICE_ALARM_004', self.client.get('/').data)
 
-    def test_connection_auth_validation_and_write_failure(self):
-        self.assertEqual(self.client.post('/connection').status_code, 401)
-        self.assertEqual(self.client.post('/connection', headers=self.auth).status_code, 403)
+    def test_connection_csrf_validation_and_write_failure(self):
+        self.assertEqual(self.client.post('/connection').status_code, 403)
         data = {'csrf': self.form_token(), 'device_id': 'DEVICE_004',
                 'server_url': 'https://example.com', 'stream_token': 'token'}
         for key, value in [('device_id', 'bad\nID'), ('server_url', 'file:///etc/passwd'),
@@ -106,11 +124,11 @@ class PortalTests(unittest.TestCase):
                            ('server_url', 'https://example.com?token=abc'),
                            ('stream_token', 'bad\ntoken')]:
             with patch.object(portal, 'atomic_write') as write:
-                self.assertEqual(self.client.post('/connection', headers=self.auth,
+                self.assertEqual(self.client.post('/connection',
                                                  data={**data, key: value}).status_code, 400)
                 write.assert_not_called()
         with patch.object(portal, 'atomic_write', side_effect=OSError):
-            self.assertEqual(self.client.post('/connection', headers=self.auth, data=data).status_code, 500)
+            self.assertEqual(self.client.post('/connection', data=data).status_code, 500)
             self.assertFalse(self.manager.busy)
             self.assertTrue(self.manager.jobs.empty())
 

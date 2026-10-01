@@ -40,5 +40,42 @@ class AgentStartupTests(unittest.TestCase):
         self.assertNotIn("unavailable", output)
 
 
+class ConnectionNoticeTests(unittest.TestCase):
+    def test_dns_wait_is_reported_once_and_resets_after_recovery(self):
+        import io
+        import socket
+        from contextlib import redirect_stderr
+        from urllib.error import URLError
+        from raspi_agent import ConnectionNotice
+        notice = ConnectionNotice()
+        error = URLError(socket.gaierror(socket.EAI_AGAIN, 'temporary DNS failure'))
+        output = io.StringIO()
+        with redirect_stderr(output):
+            notice.failed('Heartbeat', error)
+            notice.failed('Heartbeat', error)
+            notice.connected()
+            notice.failed('Heartbeat', error)
+        self.assertEqual(output.getvalue().count('자동 재시도 대기'), 2)
+        self.assertNotIn('failed', output.getvalue())
+        self.assertNotIn('DNS failure', output.getvalue())
+
+    def test_other_errors_remain_visible(self):
+        import io
+        from contextlib import redirect_stderr
+        from urllib.error import HTTPError
+        from raspi_agent import ConnectionNotice
+        output = io.StringIO()
+        with redirect_stderr(output):
+            ConnectionNotice().failed('Registration', HTTPError('http://test', 403, 'Forbidden', {}, None))
+        self.assertIn('Registration failed:', output.getvalue())
+        self.assertIn('403', output.getvalue())
+
+    def test_websocket_dns_error_is_recognized(self):
+        import websocket
+        from raspi_agent import is_dns_error
+        self.assertTrue(is_dns_error(websocket.WebSocketAddressException('DNS unavailable')))
+        self.assertFalse(is_dns_error(websocket.WebSocketTimeoutException('timeout')))
+
+
 if __name__ == "__main__":
     unittest.main()

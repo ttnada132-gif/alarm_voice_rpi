@@ -20,6 +20,41 @@ import websocket
 from handset_hook import GpioHookWatcher, HookController
 
 
+def is_dns_error(exc):
+    """Recognize urllib and websocket DNS failures without matching log text."""
+    pending = [exc]
+    seen = set()
+    while pending:
+        error = pending.pop()
+        if id(error) in seen:
+            continue
+        seen.add(id(error))
+        if isinstance(error, (socket.gaierror, websocket.WebSocketAddressException)):
+            return True
+        for nested in (getattr(error, 'reason', None),
+                       getattr(error, '__cause__', None), getattr(error, '__context__', None)):
+            if isinstance(nested, BaseException):
+                pending.append(nested)
+    return False
+
+
+class ConnectionNotice:
+    def __init__(self):
+        self.waiting = False
+
+    def failed(self, label, exc):
+        if is_dns_error(exc):
+            if not self.waiting:
+                print(f'[연결] {label}: 네트워크 연결 준비 중 · 자동 재시도 대기', file=sys.stderr)
+            self.waiting = True
+        else:
+            self.waiting = False
+            print(f'{label} failed: {exc}', file=sys.stderr)
+
+    def connected(self):
+        self.waiting = False
+
+
 class TeeStderr:
     def __init__(self, *streams):
         self._streams = streams
@@ -1137,11 +1172,13 @@ class HeartbeatWorker:
             self._thread.join(timeout=2)
 
     def _run(self) -> None:
+        notice = ConnectionNotice()
         while not self._stop_event.wait(self._interval_seconds):
             try:
                 post_json(self._server, "/api/pi/heartbeat", self._token, self._payload_factory())
+                notice.connected()
             except (HTTPError, URLError, OSError, ValueError) as exc:
-                print(f"Heartbeat failed: {exc}", file=sys.stderr)
+                notice.failed("Heartbeat", exc)
 
 
 def play_tts_audio(
@@ -1341,13 +1378,19 @@ def main(args: argparse.Namespace) -> int:
     payload = current_payload(force_gps=True)
     location_provider.start_monitor()
 
-    try:
-        response = post_json(args.server, "/api/pi/register", args.token, payload)
-        print(f"Registered {args.device_id}: {response.get('status', 'ok')}", file=sys.stderr)
-    except (HTTPError, URLError, ValueError) as exc:
-        print(f"Registration failed: {exc}", file=sys.stderr)
-        location_provider.stop_monitor()
-        return 1
+    registration_notice = ConnectionNotice()
+    while True:
+        try:
+            response = post_json(args.server, "/api/pi/register", args.token, payload)
+            print(f"Registered {args.device_id}: {response.get('status', 'ok')}", file=sys.stderr)
+            break
+        except (HTTPError, URLError, OSError, ValueError) as exc:
+            registration_notice.failed("Registration", exc)
+            if is_dns_error(exc):
+                time.sleep(max(1, args.reconnect_seconds))
+                continue
+            location_provider.stop_monitor()
+            return 1
 
     ws_url = build_pi_listen_ws_url(args.server, args.token, args)
     handset_playback = Playback(args.handset_speaker_device, args.handset_sample_rate, "handset")
@@ -1469,6 +1512,7 @@ def main(args: argparse.Namespace) -> int:
         )
         gpio_alert_watcher.start()
 
+    downlink_notice = ConnectionNotice()
     try:
         while True:
             ws = None
@@ -1476,6 +1520,7 @@ def main(args: argparse.Namespace) -> int:
                 ws = websocket.create_connection(ws_url, timeout=10)
                 ws.settimeout(max(5.0, float(args.heartbeat_seconds)))
                 ws_holder["ws"] = ws
+                downlink_notice.connected()
                 print(f"Listening for server control/audio on {ws_url}", file=sys.stderr)
                 if gpio_alert_watcher is not None and gpio_alert_watcher.is_active():
                     send_gpio_alert()
@@ -1527,7 +1572,7 @@ def main(args: argparse.Namespace) -> int:
                 ring_player.stop()
                 mic_streamer.stop()
                 handset_playback.stop()
-                print(f"Downlink failed: {exc}", file=sys.stderr)
+                downlink_notice.failed("Downlink", exc)
                 time.sleep(args.reconnect_seconds)
             finally:
                 if ws is not None:
