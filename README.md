@@ -180,7 +180,7 @@ Wi-Fi 연결이 60초 이상 끊기면 저장된 목록을 재시도하고, 모�
 
 접점은 기본 450ms 동안 안정된 상태만 처리합니다. 시작 시에는 HIGH/LOW 어느 상태에서도 발신하지 않습니다. LOW(내려놓음)가 확인된 뒤 HIGH(들림)로 바뀔 때만 발신합니다. 서버에서 통화를 종료해도 수화기를 내려놓았다가 다시 들면 새로 발신합니다. 내려놓으면 로컬 수화기 음성을 중단하고 기존 `/api/calls/<device_id>/end` API로 종료합니다. 서버 연결 실패 시 종료 요청을 재시도하고 다음 발신 전에 처리합니다. 발신은 기존 WebSocket `button` 이벤트를 사용합니다. GPIO23 SOS와 GPIO24 LED는 기존 기능을 유지합니다.
 
-## 부팅 시 자동 업데이트 (현재 버전 1.0.4)
+## 부팅 시 자동 업데이트 (현재 버전 1.0.6)
 
 `VERSION`에 설치 버전을, `release.json`에 버전 및 실행 파일별 SHA-256을 기록합니다.
 시작 스크립트는 기존 Wi-Fi/방송 서버 연결 확인이 끝난 뒤
@@ -203,10 +203,10 @@ GitHub REST API를 사용하지 않으므로 비인증 API 호출 제한(403)을
 생성된 `VERSION`, `release.json`도 함께 `main`에 push합니다.
 
 ```bash
-python3 build_release.py 1.0.4
+python3 build_release.py 1.0.6
 python3 -m unittest discover -v
 git add <수정한파일> VERSION release.json
-git commit -m "Release 1.0.4"
+git commit -m "Release 1.0.6"
 git push origin main
 ```
 
@@ -231,7 +231,7 @@ GPIO23 SOS 버튼을 누르면 `http://iotgw.raycom.co.kr:8089/libra/iot/gw/v1.0
 `battery_sensor.py`는 I2C ADS1115 AIN0에서 배터리를 측정합니다. 5초마다 전압과 잔량을 기록하고 SOS 전송 시 다시 측정합니다. 측정 실패 시 SOS 배터리 값은 null입니다.
 
 - OS에 `sudo apt install python3-smbus`를 설치하고 I2C를 활성화합니다.
-- 실행 폴더의 `battery_calibration.json`에 `bus`, `address`, `full_raw`, `full_voltage`, `empty_voltage`를 설정합니다. `full_raw`는 해당 장치의 완충 기준 실측값입니다. 장치별 보정 파일은 Git 및 자동 업데이트 대상에서 제외합니다.
+- 실행 폴더의 `battery_calibration.json`에 `bus`, `address`, `full_raw`, `full_voltage`, `empty_voltage`를 설정합니다. `full_raw`는 해당 장치의 완충 기준 실측값입니다. 저장소의 보정 파일은 192.168.0.14의 기준값이며, 장치별 기존 보정 파일은 자동 업데이트로 덮어쓰지 않습니다.
 - 서비스 환경에 `SOS_TOKEN`을 설정해야 합니다. 기존 실행 장치의 설정 파일과 인증정보를 보존합니다.
 
 현재 릴리스 버전은 1.0.5입니다. 배터리 모듈 추가로 업데이트 파일 목록이 바뀌었으므로, 기존 1.0.3 장치는 `auto_update.py`를 새 목록을 지원하는 코드로 먼저 설치해야 자동 업데이트할 수 있습니다. 기존 업데이터는 파일 목록 불일치로 업데이트를 거부하고 기존 코드를 유지합니다. 업데이트 전 `SOS_TOKEN`과 배터리 측정 환경을 설정합니다. 최초 수동 설치 시 `battery_sensor.py`도 함께 복사합니다.
@@ -248,3 +248,19 @@ Wi-Fi 연결 후에도 내장 설정 서버는 80번 포트에서 계속 실행�
 1.0.5에서는 설정용 Wi-Fi 이름 저장 기능과 내부 네트워크 접속 안내를 추가했습니다. 1.0.4와 업데이트 파일 목록이 같으므로 1.0.4 장치는 기존 자동 업데이트로 적용할 수 있습니다.
 
 Avahi가 실행 중이고 호스트 이름이 `raspberrypi`인 장치는 같은 로컬 네트워크에서 `http://raspberrypi.local/`로도 접속할 수 있습니다. 이 주소는 OS의 mDNS 설정에 따라 결정되며, 웹 화면의 기기 ID 변경과는 별개입니다. 클라이언트와 네트워크가 mDNS를 지원해야 합니다.
+
+
+### 1.0.6: 보정 파일 없는 장치의 자동 초기화
+
+1.0.6은 기존 1.0.4/1.0.5 업데이터와 같은 배포 파일 목록을 유지합니다.
+업데이트된 `battery_sensor.py`가 첫 측정 시 `battery_calibration.json`이 없으면
+192.168.0.14의 기준값(bus=1, address=72, channel=0, full_raw=8914.0,
+full_voltage=12.7, empty_voltage=10.0, adc_full_scale=6.144)으로 생성합니다.
+기존 파일은 그대로 유지하며, JSON 형식 오류나 I2C 측정 오류는 계속 보고합니다.
+동시에 저장되는 장치별 보정값도 덮어쓰지 않습니다.
+
+1.0.5 이하 장치는 다음 부팅 또는 `sudo systemctl restart shinwhatech-raspi-agent` 시
+버전 상승을 감지하여 업데이트합니다. 1.0.3의 업데이터는 1.0.4에서 추가된 배터리
+모듈을 지원하는 업데이터를 먼저 수동 설치해야 합니다. OS 재부팅이나 원격 장치
+일괄 재시작을 강제로 수행하지는 않습니다. 배터리 잔량 정확도는 장치별 보정에
+따라 달라지며, `SOS_TOKEN`은 별도 서비스 설정을 유지합니다.

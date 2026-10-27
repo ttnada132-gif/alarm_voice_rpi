@@ -1,15 +1,47 @@
 """ADS1115 AIN0 battery measurement; calibration is persisted separately."""
 import json
 import math
+import os
 from pathlib import Path
 import statistics
 import sys
+import tempfile
 import threading
 import time
 
 _READ_LOCK = threading.Lock()
 
 CALIBRATION_FILE = Path(__file__).with_name('battery_calibration.json')
+# Embedded so updaters with a fixed runtime file list can install these defaults.
+# Reference values from Raspberry Pi 192.168.0.14; existing device values win.
+DEFAULT_CALIBRATION = {
+    'bus': 1, 'address': 72, 'channel': 0, 'full_raw': 8914.0,
+    'full_voltage': 12.7, 'empty_voltage': 10.0, 'adc_full_scale': 6.144,
+}
+
+
+def load_calibration():
+    try:
+        return json.loads(CALIBRATION_FILE.read_text())
+    except FileNotFoundError:
+        pass
+    # Publish a complete file atomically, without replacing a concurrently saved
+    # device calibration. A failed write leaves no partial calibration behind.
+    fd, temporary = tempfile.mkstemp(prefix='.battery-calibration-', dir=CALIBRATION_FILE.parent)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            json.dump(DEFAULT_CALIBRATION, output, indent=2)
+            output.write('\n')
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, 0o644)
+        try:
+            os.link(temporary, CALIBRATION_FILE)
+        except FileExistsError:
+            pass
+    finally:
+        os.unlink(temporary)
+    return json.loads(CALIBRATION_FILE.read_text())
 
 
 def read_raw(samples=8, bus_number=1, address=0x48):
@@ -52,7 +84,7 @@ def battery_from_raw(raw, calibration):
 
 
 def read_battery():
-    calibration = json.loads(CALIBRATION_FILE.read_text())
+    calibration = load_calibration()
     with _READ_LOCK:
         return battery_from_raw(read_raw(bus_number=calibration['bus'], address=calibration['address']), calibration)
 
