@@ -132,6 +132,37 @@ class PortalTests(unittest.TestCase):
             self.assertFalse(self.manager.busy)
             self.assertTrue(self.manager.jobs.empty())
 
+    def test_ap_name_persists_without_disconnecting(self):
+        csrf = self.form_token()
+        self.manager.ap_id = '5'
+        original = dict(self.manager.cfg)
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'config.json'
+            with patch.object(portal, 'CONFIG', config), patch.object(portal, 'command') as command:
+                response = self.client.post('/setup-wifi', data={'csrf': csrf, 'ap_ssid': 'shth_setup_005'})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(json.loads(config.read_text()), {**original, 'ap_ssid': 'shth_setup_005'})
+                self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(self.manager.ap_id, '5')
+                self.assertTrue(self.manager.jobs.empty())
+                self.assertFalse(self.manager.busy)
+                command.assert_not_called()
+                self.assertIn(b'shth_setup_005', self.client.get('/').data)
+
+    def test_ap_name_rejects_invalid_busy_and_failed_writes(self):
+        self.assertEqual(self.client.post('/setup-wifi').status_code, 403)
+        data = {'csrf': self.form_token(), 'ap_ssid': 'setup'}
+        with patch.object(portal, 'atomic_write') as write:
+            for name in ('', 'x' * 33, '가' * 11, 'bad\nname', 'bad\x7fname'):
+                self.assertEqual(self.client.post('/setup-wifi', data={**data, 'ap_ssid': name}).status_code, 400)
+            self.manager.busy = True
+            self.assertEqual(self.client.post('/setup-wifi', data=data).status_code, 409)
+            write.assert_not_called()
+        self.manager.busy = False
+        with patch.object(portal, 'atomic_write', side_effect=OSError):
+            self.assertEqual(self.client.post('/setup-wifi', data=data).status_code, 500)
+            self.assertEqual(self.manager.cfg['ap_ssid'], 'test-setup')
+
     def test_apply_connection_restarts_only_agent(self):
         with patch.object(portal, 'command') as command, \
              patch.object(self.manager, 'update'), patch.object(self.manager, 'note'), \

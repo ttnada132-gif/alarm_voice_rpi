@@ -224,6 +224,16 @@ class Manager:
             self.jobs.put_nowait((None, None))
         return True
 
+    def save_ap_name(self, ssid):
+        # Apply on the next AP start so the current settings session stays connected.
+        with self.lock:
+            if self.busy:
+                return False
+            updated = {**self.cfg, 'ap_ssid': ssid}
+            atomic_write(CONFIG, json.dumps(updated, ensure_ascii=False, indent=2) + '\n')
+            self.cfg = updated
+        return True
+
     def apply_connection(self):
         self.update(server_ready=False)
         # AP mode intentionally keeps the agent stopped until Wi-Fi connects.
@@ -338,6 +348,20 @@ def create_app(manager):
         if not manager.submit(ssid, password):
             return '이미 연결을 시험하고 있습니다. 잠시 후 다시 시도하세요.', 409
         return render_template('wifi_setup.html', state=manager.snapshot(), cfg=manager.cfg, csrf=csrf, saved=True)
+
+    @app.route('/setup-wifi', methods=['POST'])
+    def save_setup_wifi():
+        ssid = request.form.get('ap_ssid', '').strip()
+        if not 1 <= len(ssid.encode('utf-8')) <= 32 or any(ord(c) < 32 or ord(c) == 127 for c in ssid):
+            return '설정용 Wi-Fi 이름은 제어문자 없이 1~32바이트로 입력하세요.', 400
+        try:
+            accepted = manager.save_ap_name(ssid)
+        except OSError:
+            return '설정 저장에 실패했습니다. 다시 시도하세요.', 500
+        if not accepted:
+            return '이미 설정을 적용하고 있습니다. 잠시 후 다시 시도하세요.', 409
+        return render_template('wifi_setup.html', state=manager.snapshot(), cfg=manager.cfg,
+                               csrf=csrf, ap_saved=True)
 
     @app.route('/connection', methods=['POST'])
     def save_connection():
