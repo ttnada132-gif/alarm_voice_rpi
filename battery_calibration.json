@@ -1,0 +1,9 @@
+{
+  "bus": 1,
+  "address": 72,
+  "channel": 0,
+  "full_raw": 8914.0,
+  "full_voltage": 12.7,
+  "empty_voltage": 10.0,
+  "adc_full_scale": 6.144
+}
