@@ -1,5 +1,5 @@
 {
-  "version": "1.0.6",
+  "version": "1.0.7",
   "files": {
     "auto_update.py": "b7b026cea42569b1f1e8eca2590d1838571b01ada3034c371215e724fae61b32",
     "run_raspi_agent.sh": "9ec9c0a60f6ef1b93ace2323aa1680fda70044fa0518bd2e158698344a7bfafa",
@@ -13,9 +13,9 @@
     "raspi_agent.py": "e7a5509c3cef94c701b604dd16cecd24d14f49e8e74d1649a255a041bc86ff78",
     "raspi_mic_sender.py": "3e102021ebeb3db3437939febeba80fbb50be6126ec886525e125c9a7b1b24b3",
     "wifi_connect.py": "d541b19169b461210d6aec91e194779b58c7de06e100f53900e98cd3fbca539e",
-    "wifi_portal.py": "d77ccabb25b593651b7e206965c732467d57f0f3bf36f797165f7841afba5991",
+    "wifi_portal.py": "474f986c4bda3330756b70f624bdb1e52de72951ed4a1a42340fb77de2ed472c",
     "templates/wifi_setup.html": "42ee1f8d7a7458920d4c0aa0570c4aa821e02069a7d259afd515b1f565c3dd1a",
     "0001.mp3": "2088fe128ca219003d2375d9405df31eb57ee75b39df15771f046f25e7a409d9",
-    "VERSION": "51c18dc8694861beb47a67894e61044864214435389f6d3a274704d9566ff96c"
+    "VERSION": "6d6b9230dd8b8aac527f8929b7c2fc1fa0365deccca856216de979d6f5c6a6fe"
   }
 }

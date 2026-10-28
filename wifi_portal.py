@@ -23,6 +23,15 @@ DHCP = Path('/etc/dhcpcd.conf')
 BEGIN = '# BEGIN SHINWHATECH SETUP AP\n'
 END = '# END SHINWHATECH SETUP AP\n'
 SERVICE = 'shinwhatech-raspi-agent.service'
+MIN_WIFI_WAIT_SECONDS = 180
+
+
+def load_config(path):
+    cfg = json.loads(path.read_text())
+    # Device configuration is preserved by the updater; upgrade legacy waits in memory.
+    for key in ('fail_seconds', 'connect_timeout_seconds'):
+        cfg[key] = max(MIN_WIFI_WAIT_SECONDS, float(cfg.get(key, MIN_WIFI_WAIT_SECONDS)))
+    return cfg
 
 
 def command(args, timeout=15):
@@ -292,7 +301,7 @@ class Manager:
                     self.update(network_ready=False, server_ready=False, mode='waiting')
                     if failed_since is None:
                         failed_since = time.monotonic()
-                        self.note('Wi-Fi 연결 대기 (60초 후 저장된 목록 재시도)')
+                        self.note(f'Wi-Fi 연결 대기 ({self.cfg["fail_seconds"]:g}초 후 저장된 목록 재시도)')
                     if time.monotonic() - failed_since >= self.cfg['fail_seconds']:
                         with self.lock:
                             self.busy = True
@@ -382,7 +391,7 @@ def create_app(manager):
 
 
 if __name__ == '__main__':
-    cfg = json.loads(CONFIG.read_text())
+    cfg = load_config(CONFIG)
     manager = Manager(cfg)
     thread = threading.Thread(target=manager.run, daemon=True)
     thread.start()

@@ -8,6 +8,89 @@ from unittest.mock import patch, Mock
 import wifi_portal as portal
 
 
+class StopManager(BaseException):
+    """Stop the background loop without being handled as a connection failure."""
+
+
+class WifiTimingTests(unittest.TestCase):
+    def test_legacy_and_missing_waits_upgrade_without_rewriting_device_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'wifi_portal.json'
+            for timing in ({}, {'fail_seconds': 60, 'connect_timeout_seconds': 25}):
+                original = json.dumps({**timing, 'ap_ssid': 'custom-setup', 'stream_token': 'test-token'})
+                path.write_text(original)
+                cfg = portal.load_config(path)
+                self.assertEqual(cfg['fail_seconds'], 180)
+                self.assertEqual(cfg['connect_timeout_seconds'], 180)
+                self.assertEqual(cfg['ap_ssid'], 'custom-setup')
+                self.assertEqual(cfg['stream_token'], 'test-token')
+                self.assertEqual(path.read_text(), original)
+
+    def test_longer_device_waits_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'wifi_portal.json'
+            cfg = {'fail_seconds': 300, 'connect_timeout_seconds': 240}
+            path.write_text(json.dumps(cfg))
+            self.assertEqual(portal.load_config(path), cfg)
+
+    def test_station_attempt_allows_late_success_and_times_out_at_three_minutes(self):
+        for succeeds in (True, False):
+            with self.subTest(succeeds=succeeds):
+                manager = portal.Manager({'connect_timeout_seconds': 180})
+                now = [0]
+
+                def sleep(seconds):
+                    now[0] += seconds
+
+                def station():
+                    return (succeeds and now[0] >= 120, 'router', '192.168.1.4')
+
+                with patch.object(portal.time, 'monotonic', side_effect=lambda: now[0]), \
+                     patch.object(portal.time, 'sleep', side_effect=sleep), \
+                     patch.object(manager, 'station', side_effect=station), \
+                     patch.object(manager, 'create_network', return_value='123'), \
+                     patch.object(manager, 'update'), patch.object(manager, 'note'), \
+                     patch.object(manager, 'save_network') as save, \
+                     patch.object(portal, 'command') as command, patch.object(portal, 'wpa') as wpa:
+                    self.assertEqual(manager.try_station('router', 'password', persist=True), succeeds)
+                    self.assertEqual(now[0], 120 if succeeds else 180)
+                    if succeeds:
+                        save.assert_called_once_with('router', 'password')
+                        command.assert_any_call(['systemctl', 'start', portal.SERVICE], timeout=30)
+                        self.assertNotIn(unittest.mock.call('remove_network', '123'), wpa.call_args_list)
+                    else:
+                        save.assert_not_called()
+                        wpa.assert_any_call('remove_network', '123')
+
+    def test_saved_network_retry_waits_three_minutes_and_resets_after_recovery(self):
+        for recovers in (False, True):
+            with self.subTest(recovers=recovers):
+                manager = portal.Manager({'fail_seconds': 180, 'server_test_url': 'https://example.com',
+                                          'stream_token': 'test-token'})
+                now = [0]
+
+                def sleep(seconds):
+                    now[0] += seconds
+
+                def station():
+                    return (recovers and now[0] == 60, 'router', '192.168.1.4')
+
+                with patch.object(portal, 'DHCP', Mock(read_text=Mock(return_value=''))), \
+                     patch.object(portal.time, 'monotonic', side_effect=lambda: now[0]), \
+                     patch.object(portal.time, 'sleep', side_effect=sleep), \
+                     patch.object(manager, 'station', side_effect=station), \
+                     patch.object(manager, 'update'), patch.object(manager, 'note') as note, \
+                     patch.object(manager, 'start_ap', side_effect=StopManager), \
+                     patch.object(portal, 'server_is_reachable', return_value=True), \
+                     patch.object(portal, 'load_wifi_networks', return_value=[]) as networks, \
+                     patch.object(portal, 'command'):
+                    with self.assertRaises(StopManager):
+                        manager.run()
+                    self.assertEqual(now[0], 245 if recovers else 180)
+                    networks.assert_called_once()
+                    note.assert_any_call('Wi-Fi 연결 대기 (180초 후 저장된 목록 재시도)')
+
+
 class PortalTests(unittest.TestCase):
     def setUp(self):
         self.manager = portal.Manager({'admin_password': 'test-password', 'connect_timeout_seconds': 0,

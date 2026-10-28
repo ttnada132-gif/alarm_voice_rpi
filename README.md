@@ -162,7 +162,7 @@ pytest
 
 `shinwhatech-wifi-portal.service`와 `shinwhatech-raspi-agent.service`는 부팅 시 자동 실행됩니다. 같은 Wi-Fi에서 장치 IP의 HTTP 주소로 접속해 Wi-Fi 이름과 비밀번호를 저장합니다. 설정 페이지는 아이디와 비밀번호 입력 없이 바로 열립니다. 기존 `admin_username`, `admin_password` 설정은 사용하지 않습니다.
 
-Wi-Fi 연결이 60초 이상 끊기면 저장된 목록을 재시도하고, 모두 실패하면 `sh_voice_alarm` 설정용 Wi-Fi를 엽니다. 설정용 AP는 비밀번호 없이 접속할 수 있으며(기존 `ap_password` 값은 사용하지 않음), 접속 주소는 `http://192.168.4.1/`입니다. 새 Wi-Fi 연결에 성공하면 저장하고 방송 서비스를 시작하며, 방송 프로그램은 방송 서버 연결 확인 후 실행합니다. 서버만 응답하지 않는 경우 기존 Wi-Fi를 유지합니다.
+Wi-Fi 연결이 180초(3분) 이상 끊기면 저장된 목록을 재시도하고, 모두 실패하면 `sh_voice_alarm` 설정용 Wi-Fi를 엽니다. 설정용 AP는 비밀번호 없이 접속할 수 있으며(기존 `ap_password` 값은 사용하지 않음), 접속 주소는 `http://192.168.4.1/`입니다. 새 Wi-Fi 연결에 성공하면 저장하고 방송 서비스를 시작하며, 방송 프로그램은 방송 서버 연결 확인 후 실행합니다. 서버만 응답하지 않는 경우 기존 Wi-Fi를 유지합니다.
 
 상태 확인: `systemctl status shinwhatech-wifi-portal shinwhatech-raspi-agent`
 
@@ -180,7 +180,7 @@ Wi-Fi 연결이 60초 이상 끊기면 저장된 목록을 재시도하고, 모�
 
 접점은 기본 450ms 동안 안정된 상태만 처리합니다. 시작 시에는 HIGH/LOW 어느 상태에서도 발신하지 않습니다. LOW(내려놓음)가 확인된 뒤 HIGH(들림)로 바뀔 때만 발신합니다. 서버에서 통화를 종료해도 수화기를 내려놓았다가 다시 들면 새로 발신합니다. 내려놓으면 로컬 수화기 음성을 중단하고 기존 `/api/calls/<device_id>/end` API로 종료합니다. 서버 연결 실패 시 종료 요청을 재시도하고 다음 발신 전에 처리합니다. 발신은 기존 WebSocket `button` 이벤트를 사용합니다. GPIO23 SOS와 GPIO24 LED는 기존 기능을 유지합니다.
 
-## 부팅 시 자동 업데이트 (현재 버전 1.0.6)
+## 부팅 시 자동 업데이트 (현재 버전 1.0.7)
 
 `VERSION`에 설치 버전을, `release.json`에 버전 및 실행 파일별 SHA-256을 기록합니다.
 시작 스크립트는 기존 Wi-Fi/방송 서버 연결 확인이 끝난 뒤
@@ -203,10 +203,10 @@ GitHub REST API를 사용하지 않으므로 비인증 API 호출 제한(403)을
 생성된 `VERSION`, `release.json`도 함께 `main`에 push합니다.
 
 ```bash
-python3 build_release.py 1.0.6
+python3 build_release.py 1.0.7
 python3 -m unittest discover -v
 git add <수정한파일> VERSION release.json
-git commit -m "Release 1.0.6"
+git commit -m "Release 1.0.7"
 git push origin main
 ```
 
@@ -234,7 +234,7 @@ GPIO23 SOS 버튼을 누르면 `http://iotgw.raycom.co.kr:8089/libra/iot/gw/v1.0
 - 실행 폴더의 `battery_calibration.json`에 `bus`, `address`, `full_raw`, `full_voltage`, `empty_voltage`를 설정합니다. `full_raw`는 해당 장치의 완충 기준 실측값입니다. 저장소의 보정 파일은 192.168.0.14의 기준값이며, 장치별 기존 보정 파일은 자동 업데이트로 덮어쓰지 않습니다.
 - 서비스 환경에 `SOS_TOKEN`을 설정해야 합니다. 기존 실행 장치의 설정 파일과 인증정보를 보존합니다.
 
-현재 릴리스 버전은 1.0.5입니다. 배터리 모듈 추가로 업데이트 파일 목록이 바뀌었으므로, 기존 1.0.3 장치는 `auto_update.py`를 새 목록을 지원하는 코드로 먼저 설치해야 자동 업데이트할 수 있습니다. 기존 업데이터는 파일 목록 불일치로 업데이트를 거부하고 기존 코드를 유지합니다. 업데이트 전 `SOS_TOKEN`과 배터리 측정 환경을 설정합니다. 최초 수동 설치 시 `battery_sensor.py`도 함께 복사합니다.
+현재 릴리스 버전은 1.0.7입니다. 배터리 모듈 추가로 업데이트 파일 목록이 바뀌었으므로, 기존 1.0.3 장치는 `auto_update.py`를 새 목록을 지원하는 코드로 먼저 설치해야 자동 업데이트할 수 있습니다. 기존 업데이터는 파일 목록 불일치로 업데이트를 거부하고 기존 코드를 유지합니다. 업데이트 전 `SOS_TOKEN`과 배터리 측정 환경을 설정합니다. 최초 수동 설치 시 `battery_sensor.py`도 함께 복사합니다.
 
 
 ### 내부 네트워크 설정 화면
@@ -264,3 +264,16 @@ full_voltage=12.7, empty_voltage=10.0, adc_full_scale=6.144)으로 생성합니�
 모듈을 지원하는 업데이터를 먼저 수동 설치해야 합니다. OS 재부팅이나 원격 장치
 일괄 재시작을 강제로 수행하지는 않습니다. 배터리 잔량 정확도는 장치별 보정에
 따라 달라지며, `SOS_TOKEN`은 별도 서비스 설정을 유지합니다.
+
+### 1.0.7: Wi-Fi 연결 대기 3분
+
+Wi-Fi 설정 서비스의 연결 끊김 대기(`fail_seconds`)와 각 Wi-Fi 연결 시도 제한
+(`connect_timeout_seconds`)을 최소 180초(3분)로 늘렸습니다. 연결되면 즉시 진행하며,
+저장된 Wi-Fi가 여러 개면 각 항목을 최대 3분씩 시도한 후 모두 실패할 때 설정용 AP를 엽니다.
+따라서 연결 끊김부터 AP 전환까지의 전체 시간은 3분보다 길 수 있습니다.
+
+자동 업데이트가 장치별 `wifi_portal.json`을 보존하므로, 서비스 시작 시 기존 60초 등
+180초 미만 설정을 메모리에서 180초로 적용합니다. 180초보다 긴 설정은 유지합니다.
+설정 파일 자체와 저장된 SSID/비밀번호, 서버 접속정보는 덮어쓰지 않습니다.
+로그의 대기 시간도 실제 적용 값으로 표시합니다. 포털 없이 사용하는 기존
+`wifi_connect.py` 단독 실행 경로의 재시도 간격은 변경하지 않습니다.
