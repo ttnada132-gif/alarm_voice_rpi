@@ -277,3 +277,44 @@ Wi-Fi 설정 서비스의 연결 끊김 대기(`fail_seconds`)와 각 Wi-Fi 연�
 설정 파일 자체와 저장된 SSID/비밀번호, 서버 접속정보는 덮어쓰지 않습니다.
 로그의 대기 시간도 실제 적용 값으로 표시합니다. 포털 없이 사용하는 기존
 `wifi_connect.py` 단독 실행 경로의 재시도 간격은 변경하지 않습니다.
+
+## RTL88x2bu USB 동글을 기본 Wi-Fi로 전환
+
+Raspberry Pi OS의 `dhcpcd` 구성에서 사용하는 일회성 설치 도구입니다.
+내장 Wi-Fi(`brcmfmac`)가 `wlan0`, USB 동글(`rtl88x2bu`)이 `wlan1`이고,
+`shinwhatech-wifi-portal.service`가 실행 중이어야 합니다.
+먼저 [88x2bu 드라이버](https://github.com/morrownr/88x2bu-20210702)의 안내에 따라
+현재 커널에 맞는 헤더와 드라이버를 설치하고 `sudo modprobe 88x2bu`를 실행하세요.
+동글은 기존 `/etc/wpa_supplicant/wpa_supplicant.conf`의 Wi-Fi 설정을 사용합니다.
+
+저장소 루트에서 실행합니다. 전환 중 Wi-Fi가 잠시 끊기므로 SSH 접속 종료와
+무관하게 계속 실행되도록 systemd 서비스로 시작합니다.
+
+```bash
+sudo systemd-run --unit=alarm-dongle-switch --collect \
+  /bin/bash "$PWD/scripts/switch-alarm-dongle.sh"
+sudo journalctl -u alarm-dongle-switch -f
+```
+
+- `/etc/dhcpcd.conf`를 `/home/pi/dongle-config-backup/dhcpcd.conf`에 백업합니다.
+- MAC 주소를 읽어 `/etc/systemd/network/10-alarm-internal.link`와
+  `11-alarm-dongle.link`에 영구 이름을 지정합니다. 기기별 MAC 주소나 비밀번호는 Git에 저장하지 않습니다.
+- USB 동글을 `wlan0`(metric 100), 내장 Wi-Fi를 `wlan-internal`(metric 600)로 전환합니다.
+  경보기 프로그램은 기존처럼 `wlan0`를 사용합니다.
+- 최대 약 3분 동안 동글의 WPA 연결 완료와 IPv4 주소 할당을 기다립니다.
+  `169.254.x.x` 자동 할당 주소는 성공으로 처리하지 않습니다.
+- 전환 명령 실패 또는 연결 시간 초과 시 DHCP 설정, 인터페이스 이름을 원래대로 복구하고
+  추가한 `.link` 파일을 제거한 뒤 연결 관리 서비스를 다시 시작합니다. 로그에 `ROLLED_BACK`을 남기고 실패 상태로 종료합니다.
+- 성공하면 `SWITCH_COMPLETE`를 기록합니다. 아래 명령으로 실제 서버 연결도 확인하세요.
+
+```bash
+ip -brief address
+ip -4 route
+cat /run/shinwhatech-wifi/status.json
+```
+
+이는 **설정 전환 실패 시 복구**이며, 이후의 동글 고장·신호 장애를 감시하는 watchdog은 아닙니다.
+내장 Wi-Fi 경로는 보조로 남지만, 경보기 포털은 `wlan0`를 관리합니다.
+전원 차단이나 강제 종료(SIGKILL)는 자동 복구할 수 없습니다.
+이미 전환된 장치나 기존 백업/동일 이름의 `.link` 파일이 있는 장치에서는 덮어쓰지 않고 중단합니다.
+이 스크립트는 수동 설치 도구로, 앱 자동 업데이트 시 실행되지 않습니다.
